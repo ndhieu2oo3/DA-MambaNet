@@ -1,88 +1,123 @@
-import os
 import numpy as np
-import albumentations as A
-import cv2
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from tqdm import tqdm
-import torch.backends.cudnn as cudnn
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from sklearn.model_selection import train_test_split
+import yaml
 
+def build_transform(cfg, mode="train"):
+    aug_cfg = cfg["augmentation"][mode]
 
-def get_train_transform():
-    return A.Compose([
-        A.Resize(256, 256),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
-        A.RGBShift(r_shift_limit=25, g_shift_limit=25, b_shift_limit=25, p=0.5),
-        A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
-        A.Normalize(mean=(0.485, 0.456, 0.406),
-                    std=(0.229, 0.224, 0.225))
-    ])
+    transform_list = [
+        A.Resize(aug_cfg["resize"][0], aug_cfg["resize"][1])
+    ]
 
+    if mode == "train":
+        transform_list.append(
+            A.ShiftScaleRotate(
+                shift_limit=aug_cfg["shift_scale_rotate"]["shift_limit"],
+                scale_limit=aug_cfg["shift_scale_rotate"]["scale_limit"],
+                rotate_limit=aug_cfg["shift_scale_rotate"]["rotate_limit"],
+                p=aug_cfg["shift_scale_rotate"]["p"],
+            )
+        )
+        transform_list.append(
+            A.RGBShift(
+                r_shift_limit=aug_cfg["rgb_shift"]["r_shift_limit"],
+                g_shift_limit=aug_cfg["rgb_shift"]["g_shift_limit"],
+                b_shift_limit=aug_cfg["rgb_shift"]["b_shift_limit"],
+                p=aug_cfg["rgb_shift"]["p"],
+            )
+        )
+        transform_list.append(
+            A.RandomBrightnessContrast(
+                brightness_limit=aug_cfg["brightness_contrast"]["brightness_limit"],
+                contrast_limit=aug_cfg["brightness_contrast"]["contrast_limit"],
+                p=aug_cfg["brightness_contrast"]["p"],
+            )
+        )
 
-def get_val_transform():
-    return A.Compose([
-        A.Resize(256, 256),
-        A.Normalize(mean=(0.485, 0.456, 0.406),
-                    std=(0.229, 0.224, 0.225))
-    ])
+    transform_list.append(
+        A.Normalize(
+            mean=aug_cfg["normalize"]["mean"],
+            std=aug_cfg["normalize"]["std"],
+        )
+    )
+    transform_list.append(ToTensorV2())
 
+    return A.Compose(transform_list)
 
-def load_images(data_path, split='train'):
-    data = np.load(data_path)
-    return data[f"{split}_img"]
-
-
-def load_masks(data_path, split='train'):
-    data = np.load(data_path)
-    masks = data[f"{split}_msk"]
-    return masks.squeeze(-1)
-
-
-class SegmentationDataset(Dataset):
+class ChestXrayDataset(Dataset):
     def __init__(self, images, masks, transform=None):
         self.images = images
         self.masks = masks
         self.transform = transform
 
+    def __len__(self):
+        return len(self.images)
+
     def __getitem__(self, idx):
         img = self.images[idx]
         msk = self.masks[idx]
 
-        if self.transform is not None:
-            transformed = self.transform(image=img, mask=msk)
-            img = transformed["image"]
-            msk = transformed["mask"]
-
-        img = transforms.ToTensor()(img)
-        msk = np.expand_dims(msk, axis=-1)
-        msk = transforms.ToTensor()(msk)
+        transformed = self.transform(image=img, mask=msk)
+        img = transformed["image"]
+        msk = transformed["mask"].unsqueeze(0).float()
 
         return img, msk
 
-    def __len__(self):
-        return len(self.images)
 
+def get_chest_xray_dataloaders(config_path="configs/datasets/chest_xray.yaml"):
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
 
-def create_dataloaders(train_path, test_path, batch_size=8, num_workers=2):
-    x_train = np.load(os.path.join(train_path, "X_train.npy"))
-    y_train = np.load(os.path.join(train_path, "y_train.npy"))
-    x_test = np.load(os.path.join(test_path, "X_test.npy"))
-    y_test = np.load(os.path.join(test_path, "y_test.npy"))
+    # Load data
+    X_train = np.load(cfg["dataset"]["train_img"])
+    Y_train = np.load(cfg["dataset"]["train_msk"])[..., 0]
 
-    y_train = y_train[:, :, :, 0]
-    y_test = y_test[:, :, :, 0]
-    x_val, y_val = x_test, y_test
+    X_test = np.load(cfg["dataset"]["test_img"])
+    Y_test = np.load(cfg["dataset"]["test_msk"])[..., 0]
 
-    # Dataset
-    train_dataset = SegmentationDataset(x_train, y_train, transform=get_train_transform())
-    val_dataset = SegmentationDataset(x_val, y_val, transform=get_val_transform())
-    test_dataset = SegmentationDataset(x_test, y_test, transform=get_val_transform())
+    # Split train / val
+    X_train, X_val, Y_train, Y_val = train_test_split(
+        X_train, Y_train,
+        test_size=0.2,
+        random_state=cfg["dataset"]["seed"]
+    )
 
-    # DataLoader
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+    # Transforms
+    train_tf = build_transform(cfg, mode="train")
+    val_tf = build_transform(cfg, mode="val")
 
-    return train_loader, val_loader, test_loader
+    # Datasets
+    train_ds = ChestXrayDataset(X_train, Y_train, transform=train_tf)
+    val_ds = ChestXrayDataset(X_val, Y_val, transform=val_tf)
+    test_ds = ChestXrayDataset(X_test, Y_test, transform=val_tf)
+
+    # Dataloaders
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg["dataloader"]["train"]["batch_size"],
+        shuffle=cfg["dataloader"]["train"]["shuffle"],
+        num_workers=cfg["dataloader"]["train"]["num_workers"],
+        pin_memory=cfg["dataloader"]["train"]["pin_memory"],
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg["dataloader"]["val"]["batch_size"],
+        shuffle=cfg["dataloader"]["val"]["shuffle"],
+        num_workers=cfg["dataloader"]["val"]["num_workers"],
+        pin_memory=cfg["dataloader"]["val"]["pin_memory"],
+    )
+
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=cfg["dataloader"]["test"]["batch_size"],
+        shuffle=cfg["dataloader"]["test"]["shuffle"],
+        num_workers=cfg["dataloader"]["test"]["num_workers"],
+        pin_memory=cfg["dataloader"]["test"]["pin_memory"],
+    )
+
+    return train_loader, val_loader, test_loader, cfg

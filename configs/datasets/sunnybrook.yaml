@@ -1,0 +1,37 @@
+dataset:
+  name: "Sunnybrook-EndoEpi"
+
+  # ---- EDIT THESE PATHS ----
+  train_images: "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Xtrain_epi.npy"
+  train_masks:  "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Ytrain_epi.npy"
+
+  val_images: "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Xval_epi.npy"
+  val_masks:  "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Yval_epi.npy"
+
+  test_images: "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Xtest_epi.npy"
+  test_masks:  "/content/drive/MyDrive/MyModel_Segment/endo_epi_sunnybrook/Ytest_epi.npy"
+
+  crop_size: [160, 160]
+  batch_size: 16
+  seed: 42
+
+augmentation:
+  train:
+    hflip_p: 0.2
+    vflip_p: 0.2
+
+dataloader:
+  train:
+    shuffle: true
+    num_workers: 2
+    pin_memory: true
+
+  val:
+    shuffle: false
+    num_workers: 2
+    pin_memory: false
+
+  test:
+    shuffle: false
+    num_workers: 2
+    pin_memory: false

@@ -1,71 +1,86 @@
-import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import yaml
 
-IMG_HEIGHT = 256
-IMG_WIDTH = 256
-BATCH_SIZE = 8
+def build_transforms(cfg, mode="train"):
+    aug_cfg = cfg["augmentation"][mode]
+    H, W = cfg["dataset"]["image_size"]
 
-def get_transforms():
-    train_transform = A.Compose(
-        [
-            A.Resize(height=IMG_HEIGHT, width=IMG_WIDTH),
-            A.Rotate(limit=20, p=1.0),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.1),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-                max_pixel_value=255.0,
-            ),
-            ToTensorV2(),
-        ]
+    transforms_list = [A.Resize(height=H, width=W)]
+
+    if mode == "train":
+        transforms_list.append(A.Rotate(limit=aug_cfg["rotate_limit"], p=1.0))
+        transforms_list.append(A.HorizontalFlip(p=aug_cfg["hflip_p"]))
+        transforms_list.append(A.VerticalFlip(p=aug_cfg["vflip_p"]))
+
+    transforms_list.append(
+        A.Normalize(
+            mean=aug_cfg["normalize_mean"],
+            std=aug_cfg["normalize_std"],
+            max_pixel_value=aug_cfg["max_pixel_value"],
+        )
     )
+    transforms_list.append(ToTensorV2())
 
-    val_transform = A.Compose(
-        [
-            A.Resize(height=IMG_HEIGHT, width=IMG_WIDTH),
-            A.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-                max_pixel_value=255.0,
-            ),
-            ToTensorV2(),
-        ]
-    )
+    return A.Compose(transforms_list)
 
-    return train_transform, val_transform
-class DataScienceBowl(Dataset):
-    def __init__(self, image_dir, mask_dir, transform=None):
-        self.image_dir = image_dir
-        self.mask_dir = mask_dir
-        self.images = np.load(image_dir)
-        self.masks = np.load(mask_dir)
+class DSB2018Dataset(Dataset):
+    def __init__(self, img_path, msk_path, transform=None):
+        self.images = np.load(img_path)
+        self.masks = np.load(msk_path)[..., 0]
         self.transform = transform
 
     def __len__(self):
-        return self.images.shape[0]
+        return len(self.images)
 
-    def __getitem__(self, index):
-        image = self.images[index]
-        mask = self.masks[index].squeeze()
+    def __getitem__(self, idx):
+        img = self.images[idx]
+        msk = self.masks[idx]
 
-        if self.transform is not None:
-            augmented = self.transform(image=image, mask=mask)
-            image = augmented["image"]
-            mask = augmented["mask"]
+        if self.transform:
+            aug = self.transform(image=img, mask=msk)
+            img = aug["image"]
+            msk = aug["mask"].unsqueeze(0).float()
 
-        return image.type(torch.FloatTensor), mask.unsqueeze(0).type(torch.FloatTensor)
-def create_dataloaders(train_img, train_mask, test_img, test_mask, batch_size=BATCH_SIZE):
-    train_transform, val_transform = get_transforms()
+        return img.float(), msk.float()
 
-    train_ds = DataScienceBowl(train_img, train_mask, transform=train_transform)
-    test_ds = DataScienceBowl(test_img, test_mask, transform=val_transform)
+def get_dsb2018_dataloaders(config_path="configs/dsb2018.yaml"):
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_ds, batch_size=1, shuffle=False)
+    # paths
+    train_img = cfg["dataset"]["train_images"]
+    train_msk = cfg["dataset"]["train_masks"]
+    test_img = cfg["dataset"]["test_images"]
+    test_msk = cfg["dataset"]["test_masks"]
 
-    return train_loader, test_loader
+    # transforms
+    train_transform = build_transforms(cfg, mode="train")
+    val_transform = build_transforms(cfg, mode="val")
+
+    # datasets
+    train_ds = DSB2018Dataset(train_img, train_msk, transform=train_transform)
+    val_ds   = DSB2018Dataset(test_img, test_msk, transform=val_transform)
+    test_ds  = DSB2018Dataset(test_img, test_msk, transform=val_transform)
+
+    # dataloaders
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg["dataloader"]["train"]["batch_size"],
+        shuffle=cfg["dataloader"]["train"]["shuffle"],
+        num_workers=cfg["dataloader"]["train"]["num_workers"],
+        pin_memory=cfg["dataloader"]["train"]["pin_memory"],
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg["dataloader"]["val"]["batch_size"],
+        shuffle=cfg["dataloader"]["val"]["shuffle"],
+        num_workers=cfg["dataloader"]["val"]["num_workers"],
+        pin_memory=cfg["dataloader"]["val"]["pin_memory"],
+    )
+
+    return train_loader, val_loader, test_ds, cfg

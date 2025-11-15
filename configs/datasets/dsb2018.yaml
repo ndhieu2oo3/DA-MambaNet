@@ -1,0 +1,39 @@
+dataset:
+  name: "DSB2018"
+
+  train_images: "/content/drive/MyDrive/MyModel_Segment/IPSAL_train_segment/data science bowl 2018/train_1.npy"
+  train_masks:  "/content/drive/MyDrive/MyModel_Segment/IPSAL_train_segment/data science bowl 2018/train_mask_1.npy"
+
+  test_images:  "/content/drive/MyDrive/MyModel_Segment/IPSAL_train_segment/data science bowl 2018/test_real.npy"
+  test_masks:   "/content/drive/MyDrive/MyModel_Segment/IPSAL_train_segment/data science bowl 2018/test_real_mask.npy"
+
+  image_size: [256, 256]
+  batch_size: 8
+  seed: 42
+
+augmentation:
+  train:
+    rotate_limit: 20
+    hflip_p: 0.5
+    vflip_p: 0.1
+    normalize_mean: [0.485, 0.456, 0.406]
+    normalize_std:  [0.229, 0.224, 0.225]
+    max_pixel_value: 255.0
+
+  val:
+    normalize_mean: [0.485, 0.456, 0.406]
+    normalize_std:  [0.229, 0.224, 0.225]
+    max_pixel_value: 255.0
+
+dataloader:
+  train:
+    batch_size: 8
+    shuffle: true
+    num_workers: 2
+    pin_memory: true
+
+  val:
+    batch_size: 8
+    shuffle: false
+    num_workers: 2
+    pin_memory: false
