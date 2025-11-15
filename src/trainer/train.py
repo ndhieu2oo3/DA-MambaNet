@@ -37,7 +37,6 @@ def train_model():
         num_sanity_val_steps=0,
     )
     trainer.fit(model, train_loader, val_loader)
-    trainer.test(model, dataloaders=val_loader)
 
 
 if __name__ == "__main__":
