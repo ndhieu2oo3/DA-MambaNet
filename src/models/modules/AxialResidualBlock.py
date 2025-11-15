@@ -12,9 +12,9 @@ class AxialMixer(nn.Module):
         x = x + self.mixer_h(x) + self.mixer_w(x)
         return x
 
-class ResidualBlock(nn.Module):
+class AxialResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
-        super(ResidualBlock, self).__init__()
+        super(AxialResidualBlock, self).__init__()
         self.conv1 = AxialMixer(in_channels, mixer_kernel=(3, 3))
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.relu = nn.ReLU(inplace=True)
@@ -40,15 +40,4 @@ class ResidualBlock(nn.Module):
         out = self.relu(out)
 
         return out
-class DecoderBlock(nn.Module):
-    def __init__(self, in_c, skip_c, out_c):
-        super().__init__()
-        self.up = nn.Upsample(scale_factor = 2)
-        self.att = Attention_block(F_g = in_c, F_l = skip_c, F_int= skip_c//2)
-        self.residual = ResidualBlock(in_c + skip_c, out_c)
-    def forward(self, x, skip):
-        x = self.up(x)
-        skip = self.att(x, skip)
-        x = torch.cat([x, skip], dim=1)
-        x = self.residual(x)
-        return x
+    

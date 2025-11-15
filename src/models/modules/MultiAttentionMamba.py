@@ -55,12 +55,9 @@ class ResMambaBlock(nn.Module):
       self.ins_norm = nn.InstanceNorm2d(in_c, affine=True)
       self.act = nn.LeakyReLU(negative_slope=0.01)
       self.block = VSSBlock(hidden_dim = in_c)
-      # self.block = nn.Conv2d(in_c, in_c, k_size, stride=1, padding='same')
       self.scale = nn.Parameter(torch.ones(1))
     def forward(self, x):
-
       skip = x
-
       x = self.conv(x)
       x = x.permute(0, 2, 3, 1)
       x = self.block(x)
