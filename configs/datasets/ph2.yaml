@@ -1,0 +1,43 @@
+dataset:
+  name: "PH2"
+  npz_path: "./Skin_data_192_256/PH2_192_256.npz"
+
+  image_size: [192, 256]   # (H, W)
+  test_size: 30
+  seed: 312
+
+dataloader:
+  train:
+    batch_size: 4
+    shuffle: true
+    num_workers: 2
+    pin_memory: true
+    prefetch_factor: 8
+    drop_last: true
+
+  test:
+    batch_size: 1
+    shuffle: false
+    num_workers: 2
+    pin_memory: false
+    prefetch_factor: 16
+    drop_last: false
+
+augmentation:
+  rotate:
+    enable: true
+    degrees: [-15, 15]
+    p: 0.5
+
+  horizontal_flip:
+    enable: true
+    p: 0.5
+
+  vertical_flip:
+    enable: true
+    p: 0.5
+
+  random_resized_crop:
+    enable: true
+    scale: [0.8, 0.95]
+    p: 0.1
